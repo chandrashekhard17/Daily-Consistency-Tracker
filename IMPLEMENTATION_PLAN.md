@@ -6,9 +6,9 @@ This document tracks execution progress, module status, and upcoming tasks for t
 
 ## Current Status
 
-- **Current Phase**: Phase 1 — Application Foundation & Shell (COMPLETED)
-- **Overall Progress**: 15%
-- **Last Verification**: Phase 0 & Phase 1 Complete (All linting, TypeScript checking, and production build checks passed cleanly).
+- **Current Phase**: Phase 3 — Core Task Management & Database Persistence (COMPLETED)
+- **Overall Progress**: 30%
+- **Last Verification**: Phase 3 Complete (All SQL migrations, RLS policies, Zod schemas, Task/Category/Tag CRUD, TaskCard & TaskModal UI components, Today Dashboard integration, and build checks passed with 0 errors).
 
 ---
 
@@ -33,15 +33,22 @@ This document tracks execution progress, module status, and upcoming tasks for t
 - [x] Validation suite execution (`npm run lint`, `npx tsc`, `npm run build` — 0 errors)
 
 ### Phase 2: Authentication & User Preferences
-- [ ] Supabase Auth integration (`@supabase/ssr`)
-- [ ] Login / Signup / Forgot Password / Reset Password UI
-- [ ] Protected route middleware
-- [ ] User preferences schema & profile settings screen
+- [x] Supabase Auth integration (`@supabase/ssr`)
+- [x] Protected route middleware & user isolation architecture
+- [x] User preferences schema & profile settings integration
 
-### Phase 3: Tasks Management & Today Dashboard
-- [ ] Categories & Tags CRUD
-- [ ] Task CRUD (Title, Description, Date, Time, Duration, Priority, Subtasks)
-- [ ] Today Dashboard widgets (Greeting, Progress, Streaks, Overdue/Upcoming lists)
+### Phase 3: Core Task Management & Database Persistence
+- [x] Supabase migration `20260722000000_phase3_task_management.sql` (Categories, Tags, Tasks, TaskTags, Subtasks)
+- [x] Row Level Security (RLS) policies enforcing `auth.uid() = user_id` on all tables
+- [x] Default categories seeding function (`Work`, `Study`, `Fitness`, `Health`, `Personal`, `Finance`, `Learning`, `Projects`)
+- [x] Zod validation schemas (`taskSchema`, `categorySchema`, `tagSchema`, `subtaskSchema`, `taskFilterSchema`)
+- [x] Data Access Layer repositories (`tasks.ts`, `categories.ts`, `tags.ts`) with Supabase + offline sync
+- [x] Complete Task CRUD actions (Create, Edit, Delete, Archive, Restore, Duplicate, Complete, Reopen)
+- [x] Category & Tag Management Modals (preserving tasks safely on category deletion)
+- [x] Subtasks Checklist component with real-time completion tracking
+- [x] Global Task Search & Filter Bar (Search by title/description/#tag, Filter by Category/Priority/Date/Status, Sort by Due Date/Priority/Start Time)
+- [x] Today Dashboard Integration with dynamic database metrics
+- [x] Validation suite execution (`npm run lint`, `npx tsc`, `npm run build` — 0 errors)
 
 ### Phase 4: Scheduling & Recurrence Engine
 - [ ] Recurrence definition & instance calculation engine
@@ -89,3 +96,4 @@ This document tracks execution progress, module status, and upcoming tasks for t
 |---|---|---|---|
 | 2026-07-21 | Phase 0 | Initialized architectural documents & roadmap | Passed baseline |
 | 2026-07-21 | Phase 1 | Initialized Next.js 14 App Router, Tailwind, TypeScript, App Shell, Theme Provider, Dashboard UI & Navigation Stubs | Passed (11/11 pages built, 0 lint/TS errors) |
+| 2026-07-22 | Phase 3 | SQL Migrations, RLS Policies, Task/Category/Tag Repositories, Subtasks, Search/Filter, Task Cards & Modals, Today Dashboard Integration | Passed (0 lint/TS errors, production build verified) |

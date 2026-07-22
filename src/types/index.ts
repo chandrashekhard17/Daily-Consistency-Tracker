@@ -1,5 +1,13 @@
 export type Priority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
-export type TaskStatus = "TODO" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "MISSED" | "RESCHEDULED";
+export type TaskStatus =
+  | "TODO"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "SKIPPED"
+  | "MISSED"
+  | "RESCHEDULED"
+  | "ARCHIVED";
+
 export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "CUSTOM";
 export type HabitType = "YES_NO" | "QUANTITY" | "DURATION";
 export type GoalStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "ON_HOLD";
@@ -61,6 +69,7 @@ export interface Task {
   recurrenceRuleId?: string;
   subtasks: Subtask[];
   tags: Tag[];
+  notes?: string;
   location?: string;
   url?: string;
   createdAt: string;
