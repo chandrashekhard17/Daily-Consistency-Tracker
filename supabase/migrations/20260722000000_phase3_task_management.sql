@@ -1,9 +1,9 @@
--- Phase 3 Migration: Task Management, Categories, Tags, Subtasks & RLS Policies
+-- Phase 3 Migration: Task Management, Categories, Tags, Subtasks & RLS Policies (Idempotent & Rerunnable)
 
--- 1. Enable UUID Extension
+-- 1. Enable Extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Create Trigger Function for updated_at
+-- 2. Create or Replace Trigger Function for updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -29,19 +29,24 @@ CREATE TABLE IF NOT EXISTS public.categories (
 -- RLS for Categories
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own categories" ON public.categories;
 CREATE POLICY "Users can view their own categories" ON public.categories
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own categories" ON public.categories;
 CREATE POLICY "Users can create their own categories" ON public.categories
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own categories" ON public.categories;
 CREATE POLICY "Users can update their own categories" ON public.categories
     FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own categories" ON public.categories;
 CREATE POLICY "Users can delete their own categories" ON public.categories
     FOR DELETE USING (auth.uid() = user_id);
 
 -- Trigger for Categories
+DROP TRIGGER IF EXISTS update_categories_updated_at ON public.categories;
 CREATE TRIGGER update_categories_updated_at
     BEFORE UPDATE ON public.categories
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -64,19 +69,24 @@ CREATE TABLE IF NOT EXISTS public.tags (
 -- RLS for Tags
 ALTER TABLE public.tags ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own tags" ON public.tags;
 CREATE POLICY "Users can view their own tags" ON public.tags
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own tags" ON public.tags;
 CREATE POLICY "Users can create their own tags" ON public.tags
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own tags" ON public.tags;
 CREATE POLICY "Users can update their own tags" ON public.tags
     FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own tags" ON public.tags;
 CREATE POLICY "Users can delete their own tags" ON public.tags
     FOR DELETE USING (auth.uid() = user_id);
 
 -- Trigger for Tags
+DROP TRIGGER IF EXISTS update_tags_updated_at ON public.tags;
 CREATE TRIGGER update_tags_updated_at
     BEFORE UPDATE ON public.tags
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -110,19 +120,24 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 -- RLS for Tasks
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own tasks" ON public.tasks;
 CREATE POLICY "Users can view their own tasks" ON public.tasks
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own tasks" ON public.tasks;
 CREATE POLICY "Users can create their own tasks" ON public.tasks
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own tasks" ON public.tasks;
 CREATE POLICY "Users can update their own tasks" ON public.tasks
     FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own tasks" ON public.tasks;
 CREATE POLICY "Users can delete their own tasks" ON public.tasks
     FOR DELETE USING (auth.uid() = user_id);
 
 -- Trigger for Tasks
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON public.tasks;
 CREATE TRIGGER update_tasks_updated_at
     BEFORE UPDATE ON public.tasks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -146,12 +161,15 @@ CREATE TABLE IF NOT EXISTS public.task_tags (
 -- RLS for TaskTags
 ALTER TABLE public.task_tags ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own task tags" ON public.task_tags;
 CREATE POLICY "Users can view their own task tags" ON public.task_tags
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own task tags" ON public.task_tags;
 CREATE POLICY "Users can insert their own task tags" ON public.task_tags
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own task tags" ON public.task_tags;
 CREATE POLICY "Users can delete their own task tags" ON public.task_tags
     FOR DELETE USING (auth.uid() = user_id);
 
@@ -175,19 +193,24 @@ CREATE TABLE IF NOT EXISTS public.subtasks (
 -- RLS for Subtasks
 ALTER TABLE public.subtasks ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own subtasks" ON public.subtasks;
 CREATE POLICY "Users can view their own subtasks" ON public.subtasks
     FOR SELECT USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can create their own subtasks" ON public.subtasks;
 CREATE POLICY "Users can create their own subtasks" ON public.subtasks
     FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own subtasks" ON public.subtasks;
 CREATE POLICY "Users can update their own subtasks" ON public.subtasks
     FOR UPDATE USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own subtasks" ON public.subtasks;
 CREATE POLICY "Users can delete their own subtasks" ON public.subtasks
     FOR DELETE USING (auth.uid() = user_id);
 
 -- Trigger for Subtasks
+DROP TRIGGER IF EXISTS update_subtasks_updated_at ON public.subtasks;
 CREATE TRIGGER update_subtasks_updated_at
     BEFORE UPDATE ON public.subtasks
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -196,8 +219,8 @@ CREATE TRIGGER update_subtasks_updated_at
 CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON public.subtasks(task_id);
 
 
--- 8. DEFAULT CATEGORIES SEED FUNCTION FOR NEW USERS
-CREATE OR REPLACE FUNCTION seed_default_categories(new_user_id UUID)
+-- 8. DEFAULT CATEGORIES SEED FUNCTION FOR NEW USERS (SECURITY DEFINER + search_path)
+CREATE OR REPLACE FUNCTION public.seed_default_categories(new_user_id UUID)
 RETURNS VOID AS $$
 BEGIN
     INSERT INTO public.categories (user_id, name, color, icon, is_default)
@@ -212,4 +235,4 @@ BEGIN
         (new_user_id, 'Projects', '#dc2626', 'FolderKanban', true)
     ON CONFLICT (user_id, name) DO NOTHING;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;

@@ -75,15 +75,16 @@ export default function TasksPage() {
       setTags(fetchedTags);
     } catch (err: any) {
       setError(err.message || "Failed to load tasks");
-    } flex:
-    setLoading(false);
+    } finally {
+      setLoading(false);
+    }
   }, [filters]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  // Task Actions
+  // Task Actions with Optimistic UI Updates
   const handleSaveTask = async (values: TaskFormValues) => {
     if (editingTask) {
       await updateTask(editingTask.id, values);
@@ -95,8 +96,20 @@ export default function TasksPage() {
 
   const handleToggleComplete = async (task: Task) => {
     const newStatus = task.status === "COMPLETED" ? "TODO" : "COMPLETED";
-    await toggleTaskStatus(task.id, newStatus);
-    await loadData();
+
+    // Optimistic UI Update (Immediate response)
+    setTasks((prev) =>
+      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
+    );
+
+    try {
+      await toggleTaskStatus(task.id, newStatus);
+    } catch (err) {
+      // Rollback on failure
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, status: task.status } : t))
+      );
+    }
   };
 
   const handleDuplicateTask = async (task: Task) => {
@@ -105,18 +118,36 @@ export default function TasksPage() {
   };
 
   const handleArchiveTask = async (task: Task) => {
-    await archiveTask(task.id);
-    await loadData();
+    // Optimistic Update: remove from active list
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+
+    try {
+      await archiveTask(task.id);
+    } catch {
+      await loadData();
+    }
   };
 
   const handleRestoreTask = async (task: Task) => {
-    await restoreTask(task.id);
-    await loadData();
+    // Optimistic Update: remove from archived list
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+
+    try {
+      await restoreTask(task.id);
+    } catch {
+      await loadData();
+    }
   };
 
   const handleDeleteTask = async (task: Task) => {
-    await deleteTask(task.id);
-    await loadData();
+    // Optimistic Update: remove immediately
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+
+    try {
+      await deleteTask(task.id);
+    } catch {
+      await loadData();
+    }
   };
 
   // Category Actions

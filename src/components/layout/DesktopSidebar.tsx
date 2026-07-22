@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { siteConfig } from "@/lib/config/site";
 import { BrandLogo } from "@/components/layout/BrandLogo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
+import { useAuth } from "@/components/auth/AuthProvider";
 import {
   LayoutDashboard,
   Calendar,
@@ -16,6 +17,8 @@ import {
   BarChart3,
   Settings,
   ChevronRight,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -32,6 +35,10 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 
 export function DesktopSidebar() {
   const pathname = usePathname();
+  const { user, profile, signOut } = useAuth();
+
+  const displayName = profile?.fullName || user?.email?.split("@")[0] || "User";
+  const userInitial = displayName.charAt(0).toUpperCase();
 
   return (
     <aside className="hidden lg:flex flex-col w-64 border-r border-border bg-card/60 backdrop-blur-md h-screen sticky top-0 z-30 select-none">
@@ -67,18 +74,34 @@ export function DesktopSidebar() {
         })}
       </nav>
 
-      {/* Sidebar Footer */}
-      <div className="p-4 border-t border-border/50 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center font-bold text-xs text-primary">
-            U
+      {/* Sidebar Footer - Authenticated User Profile */}
+      <div className="p-4 border-t border-border/50 flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="h-9 w-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center font-bold text-sm text-primary shrink-0">
+              {userInitial}
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-xs font-semibold text-foreground truncate leading-none">
+                {displayName}
+              </span>
+              <span className="text-[10px] text-muted-foreground truncate mt-0.5">
+                {user?.email || "Authenticated"}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold text-foreground leading-none">Demo User</span>
-            <span className="text-[10px] text-muted-foreground">Pro Member</span>
-          </div>
+          <ThemeToggle />
         </div>
-        <ThemeToggle />
+
+        {user && (
+          <button
+            onClick={() => signOut()}
+            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            <span>Sign Out</span>
+          </button>
+        )}
       </div>
     </aside>
   );

@@ -1,19 +1,28 @@
 import { Category } from "@/types";
-import { supabase, isSupabaseConfigured } from "./supabase";
+import { supabase, isSupabaseConfigured, isLocalMockEnabled } from "./supabase";
 import { CategoryFormValues } from "../validators/task";
+import { getCachedData, setCachedData, invalidateCacheKey } from "./cache";
 
 const STORAGE_KEY = "daily_consistency_tracker_categories";
+const CACHE_KEY = "categories";
 
 const defaultCategories: Category[] = [
-  { id: "cat-work", userId: "demo-user", name: "Work", color: "#4f46e5", icon: "Briefcase", isArchived: false },
-  { id: "cat-study", userId: "demo-user", name: "Study", color: "#0284c7", icon: "BookOpen", isArchived: false },
-  { id: "cat-fitness", userId: "demo-user", name: "Fitness", color: "#16a34a", icon: "Dumbbell", isArchived: false },
-  { id: "cat-health", userId: "demo-user", name: "Health", color: "#059669", icon: "HeartPulse", isArchived: false },
-  { id: "cat-personal", userId: "demo-user", name: "Personal", color: "#d97706", icon: "User", isArchived: false },
-  { id: "cat-finance", userId: "demo-user", name: "Finance", color: "#2563eb", icon: "Wallet", isArchived: false },
-  { id: "cat-learning", userId: "demo-user", name: "Learning", color: "#9333ea", icon: "GraduationCap", isArchived: false },
-  { id: "cat-projects", userId: "demo-user", name: "Projects", color: "#dc2626", icon: "FolderKanban", isArchived: false },
+  { id: "cat-work", userId: "local-user", name: "Work", color: "#4f46e5", icon: "Briefcase", isArchived: false },
+  { id: "cat-study", userId: "local-user", name: "Study", color: "#0284c7", icon: "BookOpen", isArchived: false },
+  { id: "cat-fitness", userId: "local-user", name: "Fitness", color: "#16a34a", icon: "Dumbbell", isArchived: false },
+  { id: "cat-health", userId: "local-user", name: "Health", color: "#059669", icon: "HeartPulse", isArchived: false },
+  { id: "cat-personal", userId: "local-user", name: "Personal", color: "#d97706", icon: "User", isArchived: false },
+  { id: "cat-finance", userId: "local-user", name: "Finance", color: "#2563eb", icon: "Wallet", isArchived: false },
+  { id: "cat-learning", userId: "local-user", name: "Learning", color: "#9333ea", icon: "GraduationCap", isArchived: false },
+  { id: "cat-projects", userId: "local-user", name: "Projects", color: "#dc2626", icon: "FolderKanban", isArchived: false },
 ];
+
+async function getCurrentUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user?.id) return session.user.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
 
 function getLocalCategories(): Category[] {
   if (typeof window === "undefined") return defaultCategories;
@@ -37,14 +46,22 @@ function saveLocalCategories(categories: Category[]) {
 
 export async function getCategories(): Promise<Category[]> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+
+    const cached = getCachedData<Category[]>(CACHE_KEY, userId);
+    if (cached) return cached;
+
     const { data, error } = await supabase
       .from("categories")
       .select("*")
+      .eq("user_id", userId)
       .eq("is_archived", false)
       .order("name", { ascending: true });
 
     if (error) throw new Error(error.message);
-    return data.map((c) => ({
+
+    const categories: Category[] = (data || []).map((c) => ({
       id: c.id,
       userId: c.user_id,
       name: c.name,
@@ -52,16 +69,19 @@ export async function getCategories(): Promise<Category[]> {
       icon: c.icon,
       isArchived: c.is_archived,
     }));
+
+    setCachedData(CACHE_KEY, userId, categories);
+    return categories;
   }
 
+  if (!isLocalMockEnabled()) throw new Error("Supabase is not configured.");
   return getLocalCategories().filter((c) => !c.isArchived);
 }
 
 export async function createCategory(values: CategoryFormValues): Promise<Category> {
   if (isSupabaseConfigured()) {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) throw new Error("Unauthorized");
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required to create category");
 
     const { data, error } = await supabase
       .from("categories")
@@ -75,6 +95,9 @@ export async function createCategory(values: CategoryFormValues): Promise<Catego
       .single();
 
     if (error) throw new Error(error.message);
+
+    invalidateCacheKey(CACHE_KEY);
+
     return {
       id: data.id,
       userId: data.user_id,
@@ -88,7 +111,7 @@ export async function createCategory(values: CategoryFormValues): Promise<Catego
   const local = getLocalCategories();
   const newCat: Category = {
     id: `cat-${Date.now()}`,
-    userId: "demo-user",
+    userId: "local-user",
     name: values.name,
     color: values.color,
     icon: values.icon,
@@ -101,6 +124,9 @@ export async function createCategory(values: CategoryFormValues): Promise<Catego
 
 export async function updateCategory(id: string, values: CategoryFormValues): Promise<Category> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { data, error } = await supabase
       .from("categories")
       .update({
@@ -109,10 +135,14 @@ export async function updateCategory(id: string, values: CategoryFormValues): Pr
         icon: values.icon,
       })
       .eq("id", id)
+      .eq("user_id", userId)
       .select()
       .single();
 
     if (error) throw new Error(error.message);
+
+    invalidateCacheKey(CACHE_KEY);
+
     return {
       id: data.id,
       userId: data.user_id,
@@ -135,12 +165,18 @@ export async function updateCategory(id: string, values: CategoryFormValues): Pr
 
 export async function archiveCategory(id: string): Promise<void> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { error } = await supabase
       .from("categories")
       .update({ is_archived: true })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) throw new Error(error.message);
+
+    invalidateCacheKey(CACHE_KEY);
     return;
   }
 
@@ -151,9 +187,18 @@ export async function archiveCategory(id: string): Promise<void> {
 
 export async function deleteCategory(id: string): Promise<void> {
   if (isSupabaseConfigured()) {
-    // Note: Database ON DELETE SET NULL is enforced on tasks table, preserving user tasks safely
-    const { error } = await supabase.from("categories").delete().eq("id", id);
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
+    const { error } = await supabase
+      .from("categories")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
     if (error) throw new Error(error.message);
+
+    invalidateCacheKey(CACHE_KEY);
     return;
   }
 

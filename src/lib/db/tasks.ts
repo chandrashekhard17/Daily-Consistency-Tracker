@@ -1,14 +1,14 @@
-import { Task, TaskStatus, Subtask, Tag } from "@/types";
-import { supabase, isSupabaseConfigured } from "./supabase";
+import { Task, TaskStatus } from "@/types";
+import { supabase, isSupabaseConfigured, isLocalMockEnabled } from "./supabase";
 import { TaskFormValues, TaskFilterValues } from "../validators/task";
-import { format, isBefore, isToday, parseISO, startOfDay } from "date-fns";
+import { format } from "date-fns";
 
 const STORAGE_KEY = "daily_consistency_tracker_tasks";
 
 const defaultSampleTasks: Task[] = [
   {
     id: "task-1",
-    userId: "demo-user",
+    userId: "local-user",
     categoryId: "cat-work",
     title: "Morning Code Review & Architecture Sync",
     description: "Review outstanding PRs and align on Phase 3 Task Management implementation.",
@@ -23,51 +23,18 @@ const defaultSampleTasks: Task[] = [
       { id: "sub-1", taskId: "task-1", title: "Review PR #42", isCompleted: true, order: 0 },
       { id: "sub-2", taskId: "task-1", title: "Check test coverage", isCompleted: true, order: 1 },
     ],
-    tags: [{ id: "tag-deepwork", userId: "demo-user", name: "Deep Work", color: "#6366f1" }],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "task-2",
-    userId: "demo-user",
-    categoryId: "cat-work",
-    title: "Implement Recurrence Engine & Domain Models",
-    description: "Build robust recurring task calculator and Supabase migrations.",
-    date: format(new Date(), "yyyy-MM-dd"),
-    startTime: "11:30",
-    endTime: "13:00",
-    durationMinutes: 90,
-    isAllDay: false,
-    priority: "URGENT",
-    status: "IN_PROGRESS",
-    subtasks: [
-      { id: "sub-3", taskId: "task-2", title: "Create tasks table migration", isCompleted: true, order: 0 },
-      { id: "sub-4", taskId: "task-2", title: "Build Task CRUD forms", isCompleted: false, order: 1 },
-      { id: "sub-5", taskId: "task-2", title: "Add subtasks checklist", isCompleted: false, order: 2 },
-    ],
-    tags: [{ id: "tag-urgent", userId: "demo-user", name: "Urgent", color: "#ef4444" }],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: "task-3",
-    userId: "demo-user",
-    categoryId: "cat-fitness",
-    title: "Evening Workout & Hydration Check",
-    description: "30 mins core workout + track 3L water intake.",
-    date: format(new Date(), "yyyy-MM-dd"),
-    startTime: "17:30",
-    endTime: "18:00",
-    durationMinutes: 30,
-    isAllDay: false,
-    priority: "MEDIUM",
-    status: "TODO",
-    subtasks: [],
-    tags: [{ id: "tag-quick", userId: "demo-user", name: "Quick Win", color: "#10b981" }],
+    tags: [{ id: "tag-deepwork", userId: "local-user", name: "Deep Work", color: "#6366f1" }],
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
 ];
+
+async function getCurrentUserId(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user?.id) return session.user.id;
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.id ?? null;
+}
 
 function getLocalTasks(): Task[] {
   if (typeof window === "undefined") return defaultSampleTasks;
@@ -93,6 +60,9 @@ export async function getTasks(filter?: Partial<TaskFilterValues>): Promise<Task
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) return [];
+
     let query = supabase
       .from("tasks")
       .select(`
@@ -101,7 +71,8 @@ export async function getTasks(filter?: Partial<TaskFilterValues>): Promise<Task
         task_tags (
           tags (*)
         )
-      `);
+      `)
+      .eq("user_id", userId);
 
     if (!filter?.showArchived) {
       query = query.eq("is_archived", false);
@@ -132,9 +103,9 @@ export async function getTasks(filter?: Partial<TaskFilterValues>): Promise<Task
     }
 
     const { data, error } = await query;
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(`Supabase Database Error: ${error.message}`);
 
-    let result: Task[] = data.map((t) => ({
+    let result: Task[] = (data || []).map((t) => ({
       id: t.id,
       userId: t.user_id,
       categoryId: t.category_id,
@@ -170,7 +141,6 @@ export async function getTasks(filter?: Partial<TaskFilterValues>): Promise<Task
       updatedAt: t.updated_at,
     }));
 
-    // Client-side search filtering if specified
     if (filter?.search) {
       const q = filter.search.toLowerCase();
       result = result.filter(
@@ -181,11 +151,11 @@ export async function getTasks(filter?: Partial<TaskFilterValues>): Promise<Task
       );
     }
 
-    // Client-side sorting
     return sortTasks(result, filter?.sortBy || "DUE_DATE", filter?.sortOrder || "ASC");
   }
 
-  // Local Storage Fallback Mode
+  if (!isLocalMockEnabled()) throw new Error("Supabase is not configured.");
+
   let tasks = getLocalTasks();
 
   if (!filter?.showArchived) {
@@ -258,9 +228,8 @@ export async function createTask(values: TaskFormValues): Promise<Task> {
   const now = new Date().toISOString();
 
   if (isSupabaseConfigured()) {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) throw new Error("Unauthorized");
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required to create a task");
 
     const { data: taskData, error: taskError } = await supabase
       .from("tasks")
@@ -283,9 +252,8 @@ export async function createTask(values: TaskFormValues): Promise<Task> {
       .select()
       .single();
 
-    if (taskError) throw new Error(taskError.message);
+    if (taskError) throw new Error(`Failed to create task: ${taskError.message}`);
 
-    // Insert Task Tags
     if (values.tagIds.length > 0) {
       const taskTagRows = values.tagIds.map((tagId) => ({
         task_id: taskData.id,
@@ -295,7 +263,6 @@ export async function createTask(values: TaskFormValues): Promise<Task> {
       await supabase.from("task_tags").insert(taskTagRows);
     }
 
-    // Insert Subtasks
     if (values.subtasks.length > 0) {
       const subtaskRows = values.subtasks.map((s, idx) => ({
         task_id: taskData.id,
@@ -310,12 +277,11 @@ export async function createTask(values: TaskFormValues): Promise<Task> {
     return getTaskById(taskData.id);
   }
 
-  // Local fallback
   const local = getLocalTasks();
   const taskId = `task-${Date.now()}`;
   const newTask: Task = {
     id: taskId,
-    userId: "demo-user",
+    userId: "local-user",
     categoryId: values.categoryId || undefined,
     title: values.title,
     description: values.description,
@@ -347,6 +313,9 @@ export async function createTask(values: TaskFormValues): Promise<Task> {
 
 export async function getTaskById(id: string): Promise<Task> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { data, error } = await supabase
       .from("tasks")
       .select(`
@@ -357,6 +326,7 @@ export async function getTaskById(id: string): Promise<Task> {
         )
       `)
       .eq("id", id)
+      .eq("user_id", userId)
       .single();
 
     if (error) throw new Error(error.message);
@@ -408,6 +378,9 @@ export async function updateTask(id: string, values: TaskFormValues): Promise<Ta
   const now = new Date().toISOString();
 
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { error: taskError } = await supabase
       .from("tasks")
       .update({
@@ -425,18 +398,17 @@ export async function updateTask(id: string, values: TaskFormValues): Promise<Ta
         url: values.url || null,
         location: values.location,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (taskError) throw new Error(taskError.message);
 
-    // Sync tags
-    await supabase.from("task_tags").delete().eq("task_id", id);
+    await supabase.from("task_tags").delete().eq("task_id", id).eq("user_id", userId);
     if (values.tagIds.length > 0) {
-      const { data: userData } = await supabase.auth.getUser();
       const taskTagRows = values.tagIds.map((tagId) => ({
         task_id: id,
         tag_id: tagId,
-        user_id: userData.user?.id!,
+        user_id: userId,
       }));
       await supabase.from("task_tags").insert(taskTagRows);
     }
@@ -444,7 +416,6 @@ export async function updateTask(id: string, values: TaskFormValues): Promise<Ta
     return getTaskById(id);
   }
 
-  // Local update
   const local = getLocalTasks();
   const index = local.findIndex((t) => t.id === id);
   if (index === -1) throw new Error("Task not found");
@@ -474,10 +445,14 @@ export async function updateTask(id: string, values: TaskFormValues): Promise<Ta
 
 export async function toggleTaskStatus(id: string, newStatus: TaskStatus): Promise<Task> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { error } = await supabase
       .from("tasks")
       .update({ status: newStatus })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", userId);
 
     if (error) throw new Error(error.message);
     return getTaskById(id);
@@ -526,7 +501,15 @@ export async function duplicateTask(id: string): Promise<Task> {
 
 export async function deleteTask(id: string): Promise<void> {
   if (isSupabaseConfigured()) {
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
+    const { error } = await supabase
+      .from("tasks")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", userId);
+
     if (error) throw new Error(error.message);
     return;
   }
@@ -538,10 +521,14 @@ export async function deleteTask(id: string): Promise<void> {
 
 export async function toggleSubtask(taskId: string, subtaskId: string, isCompleted: boolean): Promise<void> {
   if (isSupabaseConfigured()) {
+    const userId = await getCurrentUserId();
+    if (!userId) throw new Error("Authentication required");
+
     const { error } = await supabase
       .from("subtasks")
       .update({ is_completed: isCompleted })
-      .eq("id", subtaskId);
+      .eq("id", subtaskId)
+      .eq("user_id", userId);
 
     if (error) throw new Error(error.message);
     return;

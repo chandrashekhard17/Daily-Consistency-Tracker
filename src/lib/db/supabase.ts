@@ -1,19 +1,32 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder-project.supabase.co";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-anon-key";
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  "";
 
-export const isSupabaseConfigured = () => {
+export const isSupabaseConfigured = (): boolean => {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const key =
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    "";
+
   return (
-    !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY &&
-    process.env.NEXT_PUBLIC_SUPABASE_URL !== "https://placeholder-project.supabase.co"
+    !!url &&
+    !!key &&
+    !url.includes("placeholder") &&
+    url.startsWith("https://")
   );
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
+export const isLocalMockEnabled = (): boolean => {
+  if (process.env.NEXT_PUBLIC_ENABLE_LOCAL_MOCK === "true") return true;
+  return !isSupabaseConfigured();
+};
+
+export const supabase = createBrowserClient(
+  supabaseUrl || "https://placeholder-project.supabase.co",
+  supabaseAnonKey || "placeholder-anon-key"
+);
